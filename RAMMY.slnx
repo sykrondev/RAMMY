@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="RAMMY.vcxproj" Id="9cde7a48-2e35-47e3-ae86-bccb6cda7d41" />
+</Solution>

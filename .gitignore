@@ -1,0 +1,12 @@
+x64/
+RAMMY/x64/
+.vs/
+*.user
+*.suo
+*.pdb
+*.ilk
+*.obj
+*.tlog
+*.lastbuildstate
+*.iobj
+*.ipdb
