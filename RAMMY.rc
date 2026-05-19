@@ -1,10 +1,10 @@
 #include "Resource.h"
 
 #ifdef APSTUDIO_INVOKED
-#error invocado por Visual Studio
+#error invoked by Visual Studio
 #endif
 
 /////////////////////////////////////////////////////////////////////////////
-// Icono de la aplicacion
+// Application icon
 IDI_APP_ICON   ICON    "icon.ico"
 IDR_BG_PNG     RCDATA  "bg.png"

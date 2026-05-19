@@ -1,26 +1,26 @@
 //{{NO_DEPENDENCIES}}
-// Archivo de inclusión generado de Microsoft Visual C++.
-// Usado por RAMMY.rc
+// Microsoft Visual C++ generated include file.
+// Used by RAMMY.rc
 
 #define IDS_APP_TITLE			103
 
 #define IDR_MAINFRAME			128
-#define IDD_REDUCTOV2_DIALOG	102
+#define IDD_RAMMY_DIALOG	102
 #define IDD_ABOUTBOX			103
 #define IDM_ABOUT				104
 #define IDM_EXIT				105
-#define IDI_REDUCTOV2			107
+#define IDI_RAMMY			107
 #define IDI_SMALL				108
-#define IDC_REDUCTOV2			109
+#define IDC_RAMMY			109
 #define IDC_MYICON				2
 #ifndef IDC_STATIC
 #define IDC_STATIC				-1
 #endif
 
-// Recursos embebidos
+// Embedded resources
 #define IDI_APP_ICON			200
 #define IDR_BG_PNG				300
-// Valores predeterminados siguientes para nuevos objetos
+// Default values for new objects
 //
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
