@@ -40,13 +40,40 @@ RAMMY is designed to push harder across multiple cleanup paths, targeting more m
 - Ships as a single portable `.exe`.
 - Embeds its icon, background, and visual assets directly inside the app.
 
-## Under The Hood
+## Technical Deep Dive: How It Works
 
-RAMMY uses several Windows memory cleanup strategies together instead of relying on only one.
+RAMMY is built around a multi-pass cleanup pipeline. Instead of pressing one Windows API and calling it done, RAMMY chains several memory optimization paths together, then repeats the aggressive purge phase and measures memory again after Windows has had a moment to settle.
 
-It can trim process working sets with `EmptyWorkingSet`, `SetProcessWorkingSetSize`, and `SetProcessWorkingSetSizeEx`. It also calls Windows internal memory list commands through `NtSetSystemInformation`, including emptying working sets, flushing the modified page list, purging the standby list, and purging the low-priority standby list.
+The main cleanup flow lives in `ejecutarLimpieza()`. It runs two full passes, then a final intensive purge cycle. During cleanup RAMMY lowers its own cleanup thread priority so the desktop stays responsive while memory pressure is being reduced.
 
-RAMMY also targets system-level memory pressure by cleaning the system file cache, calling the Win32 file cache API, reconciling registry cache data, combining physical memory pages where Windows allows it, flushing volume buffers, and running a final intensive purge cycle to catch memory that returns during cleanup.
+| RAMMY Function | Target Area | Windows API / Method | What It Does |
+| --- | --- | --- | --- |
+| `limpiarProcesosUltraAgresivo()` | Process working sets | `EmptyWorkingSet`, `SetProcessWorkingSetSize`, `SetProcessWorkingSetSizeEx` | Trims memory held by running processes, asking Windows to release non-essential pages from each accessible process. |
+| `limpiarListasMemoriaWindows()` | Windows memory lists | `NtSetSystemInformation(SystemMemoryListInformation)` | Runs core memory-list commands: empty working sets, flush modified pages, purge standby list, and purge low-priority standby list. |
+| `limpiarSystemFileCache()` | System file cache | `NtSetSystemInformation(SystemFileCacheInformationEx)` | Reduces memory used by Windows file caching through the native NT cache control path. |
+| `limpiarFileCacheApi()` | File cache | `SetSystemFileCacheSize` | Uses the documented Win32 file cache API as a second cache-cleaning path alongside the NT call. |
+| `limpiarRegistryCache()` | Registry cache | `NtSetSystemInformation(SystemRegistryReconciliationInformation)` | Requests registry cache reconciliation so Windows can release registry-related cached memory where possible. |
+| `combinarMemoriaFisica()` | Duplicate physical pages | `NtSetSystemInformation(SystemCombinePhysicalMemoryInformation)` | Asks Windows to combine identical physical memory pages, reducing duplicated RAM usage when supported. |
+| `limpiarCacheVolumenes()` | Volume file buffers | `FlushFileBuffers` | Flushes fixed and removable drive buffers so pending file cache data can be committed and released more cleanly. |
+| `cicloAgresivoFlush()` | Repeated purge cycle | Modified list flush, standby purge, low-priority standby purge, working set empty | Runs repeated NT cleanup calls in sequence so freshly flushed pages can be purged instead of staying cached. |
+| `cicloFinalIntensivo()` | Final memory sweep | 12-command NT purge sequence | Performs a final interleaved purge after the main passes to catch memory that reappears while Windows is reconciling lists. |
+| `medirRamEstable()` | Result measurement | `GlobalMemoryStatusEx` | Samples available RAM twice and reports the best stable reading after cleanup settles. |
+
+### Memory Areas RAMMY Targets
+
+- **Working Set:** RAM currently attached to running processes. RAMMY trims accessible processes so unused pages can return to the system.
+- **Modified Page List:** Dirty pages waiting to be written back. RAMMY flushes this list so pages can move toward standby/free states.
+- **Standby List:** Cached pages Windows keeps ready for reuse. RAMMY purges both normal and low-priority standby pages.
+- **System File Cache:** Memory used by Windows to cache file data. RAMMY hits this through both NT and Win32 paths.
+- **Registry Cache:** Cached registry hive data. RAMMY requests reconciliation through the native system information API.
+- **Combined Page List:** Duplicate physical pages Windows can merge. RAMMY asks Windows to combine pages where the OS supports it.
+- **Volume Buffers:** Pending filesystem buffers. RAMMY flushes drive buffers to help cache cleanup complete more effectively.
+
+### Why The Cleanup Is More Aggressive
+
+Many memory cleaners focus mainly on working sets or standby lists. RAMMY goes wider: it trims process memory, clears multiple Windows memory lists, targets file cache through two different API routes, touches registry cache, triggers page combining, flushes volume buffers, then runs repeated purge cycles.
+
+That layered approach is why RAMMY is designed to feel stronger after heavy workloads, gaming sessions, browsers, editors, launchers, and apps that leave cached memory behind.
 
 The result is a more aggressive optimization pass built for users who want RAM cleanup to feel immediate, visible, and easy to control.
 
