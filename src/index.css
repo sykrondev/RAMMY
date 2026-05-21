@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+    overflow: hidden;
+  }
+}
+
+.aero-glass {
+  background: linear-gradient(135deg, var(--glass-white, rgba(255, 255, 255, 0.16)) 0%, var(--glass-blue, rgba(96, 165, 250, 0.08)) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 50, 100, 0.2);
+}
+
+.chrome-text {
+  background: linear-gradient(to bottom, #ffffff 0%, #a0d0ff 50%, #40a0ff 51%, #a0d0ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));
+}
+
+.glow-btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.glow-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%; width: 50%; height: 100%;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,0.4), transparent);
+  transform: skewX(-20deg);
+  transition: all 0.4s ease;
+}
+
+.glow-btn:hover::before {
+  left: 150%;
+}
+
+.glow-btn:hover {
+  box-shadow: 0 0 15px rgba(100, 200, 255, 0.8), inset 0 0 10px rgba(255,255,255,0.3);
+}
+
+.radial-bg {
+  background: radial-gradient(circle at 50% 0%, var(--glass-bg-top, rgba(30, 58, 138, 0.5)) 0%, var(--glass-bg-bottom, rgba(15, 23, 42, 0.72)) 70%);
+}
+
+.glass-opacity-transparent {
+  --glass-white: rgba(255, 255, 255, 0.08);
+  --glass-blue: rgba(96, 165, 250, 0.03);
+  --glass-bg-top: rgba(30, 58, 138, 0.28);
+  --glass-bg-bottom: rgba(15, 23, 42, 0.42);
+}
+
+.glass-opacity-medium {
+  --glass-white: rgba(255, 255, 255, 0.16);
+  --glass-blue: rgba(96, 165, 250, 0.08);
+  --glass-bg-top: rgba(30, 58, 138, 0.5);
+  --glass-bg-bottom: rgba(15, 23, 42, 0.72);
+}
+
+.glass-opacity-solid {
+  --glass-white: rgba(255, 255, 255, 0.24);
+  --glass-blue: rgba(96, 165, 250, 0.16);
+  --glass-bg-top: rgba(30, 58, 138, 0.78);
+  --glass-bg-bottom: rgba(15, 23, 42, 0.92);
+}
