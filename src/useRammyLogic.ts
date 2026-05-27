@@ -202,6 +202,10 @@ export function useRammyLogic(): RammyLogic {
     if (timerEnabled) setTimeLeft(timerInterval * 60);
   }, [timerEnabled, timerInterval, thresholdEnabled, ramThreshold, language, closeToTray, glassOpacityMode]);
 
+  useEffect(() => {
+    invoke('set_tray_language', { language }).catch(console.error);
+  }, [language]);
+
   const notifyAutoClean = async (freedBytes: number) => {
     try {
       const granted = await isPermissionGranted();

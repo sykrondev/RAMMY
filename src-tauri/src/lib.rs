@@ -8,7 +8,7 @@ use windows::{
         TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
         SE_PRIVILEGE_ENABLED,
     },
-    Win32::System::LibraryLoader::{GetModuleFileNameW, GetModuleHandleW, GetProcAddress, LoadLibraryW},
+    Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW},
     Win32::System::Memory::{SetProcessWorkingSetSizeEx, SETPROCESSWORKINGSETSIZEEX_FLAGS},
     Win32::System::ProcessStatus::{EmptyWorkingSet, EnumProcesses, GetPerformanceInfo, PERFORMANCE_INFORMATION},
     Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX},
@@ -16,6 +16,9 @@ use windows::{
 };
 use winreg::enums::*;
 use winreg::RegKey;
+use std::path::PathBuf;
+use std::process::Command;
+use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -32,6 +35,10 @@ struct CleanResult {
     freed_bytes: u64,
     usage_before: u32,
     usage_after: u32,
+}
+
+struct AppState {
+    tray_language: Mutex<String>,
 }
 
 type NtSetSystemInformationFn = unsafe extern "system" fn(u32, *mut c_void, u32) -> i32;
@@ -277,6 +284,42 @@ fn ram_tray_tooltip() -> String {
     format!("RAMMY - RAM {}% ({:.1}/{:.1} GB)", stats.percent, used_gb, total_gb)
 }
 
+fn is_spanish(language: &str) -> bool {
+    language.eq_ignore_ascii_case("es")
+}
+
+fn tray_labels(language: &str) -> (&'static str, &'static str, &'static str) {
+    if is_spanish(language) {
+        ("Limpiar RAM", "Mostrar RAMMY", "Salir")
+    } else {
+        ("Clean RAM", "Show RAMMY", "Quit")
+    }
+}
+
+fn tray_status_cleaning(language: &str) -> &'static str {
+    if is_spanish(language) {
+        "RAMMY - Limpiando RAM..."
+    } else {
+        "RAMMY - Cleaning RAM..."
+    }
+}
+
+fn tray_status_error(language: &str) -> &'static str {
+    if is_spanish(language) {
+        "RAMMY - Error al limpiar RAM"
+    } else {
+        "RAMMY - Error cleaning RAM"
+    }
+}
+
+fn tray_status_freed(language: &str, freed_mb: u64) -> String {
+    if is_spanish(language) {
+        format!("RAMMY - Liberado {} MB | {}", freed_mb, ram_tray_tooltip())
+    } else {
+        format!("RAMMY - Freed {} MB | {}", freed_mb, ram_tray_tooltip())
+    }
+}
+
 fn digit_pattern(digit: char) -> [&'static str; 5] {
     match digit {
         '0' => ["111", "101", "101", "101", "111"],
@@ -409,45 +452,128 @@ fn check_admin() -> bool {
 
 #[tauri::command]
 fn is_startup_enabled() -> bool {
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    if let Ok(run) = hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run") {
-        let val: Result<String, _> = run.get_value("RAMMY");
-        return val.is_ok();
+    if let Ok(output) = Command::new("schtasks")
+        .args(["/Query", "/TN", "RAMMY"])
+        .output()
+    {
+        if output.status.success() {
+            return true;
+        }
     }
-    false
+
+    startup_registry_value()
+        .and_then(|cmd| startup_exe_from_command(&cmd))
+        .is_some_and(|path| path.exists())
 }
 
 #[tauri::command]
 fn set_startup(enable: bool) -> Result<(), String> {
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    if let Ok((run, _)) = hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run") {
-        if enable {
-            let mut path = [0u16; 512];
-            unsafe {
-                let len = GetModuleFileNameW(None, &mut path);
-                let p = String::from_utf16_lossy(&path[..len as usize]);
-                let _ = run.set_value("RAMMY", &format!("\"{}\" --hidden", p));
-            }
-        } else {
-            let _ = run.delete_value("RAMMY");
+    remove_startup_registry_value();
+
+    if enable {
+        let exe = std::env::current_exe()
+            .map_err(|e| format!("Failed to get current executable path: {e}"))?;
+        let task_command = format!("\"{}\" --hidden", exe.display());
+        let status = Command::new("schtasks")
+            .args([
+                "/Create",
+                "/SC",
+                "ONLOGON",
+                "/TN",
+                "RAMMY",
+                "/TR",
+                &task_command,
+                "/RL",
+                "HIGHEST",
+                "/F",
+            ])
+            .status()
+            .map_err(|e| format!("Failed to create startup task: {e}"))?;
+
+        if status.success() {
+            return Ok(());
         }
+
+        return Err(format!("Failed to create startup task. schtasks exited with {status}"));
+    }
+
+    let status = Command::new("schtasks")
+        .args(["/Delete", "/TN", "RAMMY", "/F"])
+        .status()
+        .map_err(|e| format!("Failed to remove startup task: {e}"))?;
+
+    if status.success() {
         return Ok(());
     }
-    Err("Failed to edit registry".into())
+
+    Ok(())
 }
 
-use tauri::{tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent}, menu::{Menu, MenuItem}, Manager};
+fn startup_registry_value() -> Option<String> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+        .ok()
+        .and_then(|run| run.get_value("RAMMY").ok())
+}
+
+fn remove_startup_registry_value() {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok((run, _)) = hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run") {
+        let _ = run.delete_value("RAMMY");
+    }
+}
+
+fn startup_exe_from_command(command: &str) -> Option<PathBuf> {
+    let trimmed = command.trim();
+    if let Some(rest) = trimmed.strip_prefix('"') {
+        let end = rest.find('"')?;
+        return Some(PathBuf::from(&rest[..end]));
+    }
+
+    trimmed
+        .split_whitespace()
+        .next()
+        .map(PathBuf::from)
+}
+
+use tauri::{tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent}, menu::{Menu, MenuItem}, AppHandle, Manager, Runtime, State};
+
+fn build_tray_menu<R: Runtime, M: Manager<R>>(manager: &M, language: &str) -> tauri::Result<Menu<R>> {
+    let (optimize, show, quit) = tray_labels(language);
+    let optimize_i = MenuItem::with_id(manager, "optimize", optimize, true, None::<&str>)?;
+    let show_i = MenuItem::with_id(manager, "show", show, true, None::<&str>)?;
+    let quit_i = MenuItem::with_id(manager, "quit", quit, true, None::<&str>)?;
+    Menu::with_items(manager, &[&optimize_i, &show_i, &quit_i])
+}
+
+#[tauri::command]
+fn set_tray_language(app: AppHandle, state: State<AppState>, language: String) -> Result<(), String> {
+    let language = if is_spanish(&language) { "es" } else { "en" }.to_string();
+    {
+        let mut tray_language = state
+            .tray_language
+            .lock()
+            .map_err(|_| "Failed to lock tray language".to_string())?;
+        *tray_language = language.clone();
+    }
+
+    let tray = app
+        .tray_by_id("main")
+        .ok_or_else(|| "Tray icon not found".to_string())?;
+    let menu = build_tray_menu(&app, &language).map_err(|e| e.to_string())?;
+    tray.set_menu(Some(menu)).map_err(|e| e.to_string())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(AppState {
+            tray_language: Mutex::new("en".to_string()),
+        })
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            let optimize_i = MenuItem::with_id(app, "optimize", "Clean RAM", true, None::<&str>)?;
-            let show_i = MenuItem::with_id(app, "show", "Show RAMMY", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let tray_menu = Menu::with_items(app, &[&optimize_i, &show_i, &quit_i])?;
+            let tray_menu = build_tray_menu(app, "en")?;
 
             let initial_stats = get_ram_stats();
             let tray = TrayIconBuilder::with_id("main")
@@ -459,8 +585,15 @@ pub fn run() {
                         "optimize" => {
                             let app_handle = app.clone();
                             tauri::async_runtime::spawn(async move {
+                                let language = app_handle
+                                    .state::<AppState>()
+                                    .tray_language
+                                    .lock()
+                                    .map(|lang| lang.clone())
+                                    .unwrap_or_else(|_| "en".to_string());
+
                                 if let Some(tray) = app_handle.tray_by_id("main") {
-                                    let _ = tray.set_tooltip(Some("RAMMY - Cleaning RAM..."));
+                                    let _ = tray.set_tooltip(Some(tray_status_cleaning(&language)));
                                 }
 
                                 let result = optimize_ram().await;
@@ -469,10 +602,10 @@ pub fn run() {
                                     match result {
                                         Ok(clean) => {
                                             let freed_mb = clean.freed_bytes / 1024 / 1024;
-                                            let _ = tray.set_tooltip(Some(format!("RAMMY - Freed {} MB | {}", freed_mb, ram_tray_tooltip())));
+                                            let _ = tray.set_tooltip(Some(tray_status_freed(&language, freed_mb)));
                                         }
                                         Err(_) => {
-                                            let _ = tray.set_tooltip(Some("RAMMY - Error cleaning RAM"));
+                                            let _ = tray.set_tooltip(Some(tray_status_error(&language)));
                                         }
                                     }
                                 }
@@ -531,7 +664,8 @@ pub fn run() {
             optimize_ram,
             check_admin,
             is_startup_enabled,
-            set_startup
+            set_startup,
+            set_tray_language
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

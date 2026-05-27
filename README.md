@@ -7,13 +7,13 @@ RAMMY is a lightweight Windows memory optimizer built with React, TypeScript, Vi
 - Manual RAM cleanup from the main window.
 - Auto-clean by timer or RAM usage threshold.
 - System tray support with hide/show behavior.
-- Tray menu action to clean RAM without opening the app.
+- Localized tray menu action to clean RAM without opening the app.
 - Dynamic tray icon that shows current RAM usage.
-- Native Windows startup option with hidden tray start.
+- Native Windows startup option with hidden tray start through a scheduled task.
 - Glass and Flanishy visual themes.
 - Glass transparency control.
 - English and Spanish UI.
-- Notification after automatic cleanup.
+- Notification after automatic cleanup with the freed memory amount.
 
 ## Development
 

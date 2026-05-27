@@ -1,3 +1,12 @@
+# RAMMY v3.1
+
+- Fixed Windows startup by registering RAMMY with a scheduled task, so elevated startup works after reboot.
+- Fixed tray right-click menu language sync when switching between English and Spanish.
+- Localized tray cleanup status text for cleaning, errors, and freed memory.
+- Kept the tray clean action available without opening the main window.
+- Kept the dynamic tray icon showing current RAM usage.
+- Included fresh setup and portable release builds.
+
 # RAMMY v2.0.0
 
 - Rebuilt RAMMY from the old C++ project into a Tauri v2 desktop app.
